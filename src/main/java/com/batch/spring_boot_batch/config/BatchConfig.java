@@ -6,23 +6,26 @@ import com.batch.spring_boot_batch.listener.PersionStepListener;
 import com.batch.spring_boot_batch.mapper.PersonMapper;
 import com.batch.spring_boot_batch.model.PersonModel;
 import com.batch.spring_boot_batch.tasklet.InitialTasklet;
+import com.batch.spring_boot_batch.writer.PersonWriter;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.JobParameters;
 import org.springframework.batch.core.JobParametersBuilder;
 import org.springframework.batch.core.Step;
-import org.springframework.batch.core.configuration.annotation.EnableBatchProcessing;
 import org.springframework.batch.core.configuration.annotation.JobScope;
 import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.core.job.builder.JobBuilder;
 import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.batch.core.step.builder.StepBuilder;
+import org.springframework.batch.item.ItemWriter;
 import org.springframework.batch.item.database.BeanPropertyItemSqlParameterSourceProvider;
 import org.springframework.batch.item.database.JdbcBatchItemWriter;
 import org.springframework.batch.item.file.FlatFileItemReader;
+import org.springframework.batch.item.file.FlatFileItemWriter;
 import org.springframework.batch.item.file.mapping.DefaultLineMapper;
 import org.springframework.batch.item.file.transform.DelimitedLineTokenizer;
+import org.springframework.batch.item.file.transform.PassThroughLineAggregator;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
@@ -34,7 +37,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import javax.sql.DataSource;
 
 @Configuration
-@EnableBatchProcessing
+//@EnableBatchProcessing
 public class BatchConfig {
     static final Logger logger = LogManager.getLogger(BatchConfig.class);
     static final String CLASS_ID = BatchConfig.class.getName();
@@ -54,12 +57,16 @@ public class BatchConfig {
     @Autowired
     InitialTasklet initialTasklet;
 
+    @Autowired
+    private PersonWriter personWriter;
+
     @Bean
     @Qualifier("pers")
     public Job personJob() {
         return new JobBuilder("Person Job", jobRepository)
                 .start(initialStep())
-                .next(personStep())
+                //.next(csvFileToDB())
+                .next(csvFileToDB())
                 .build();
     }
 
@@ -99,8 +106,8 @@ public class BatchConfig {
 
     @Bean
     @Qualifier("pers")
-    public Step personStep() {
-        return new StepBuilder("personStep", jobRepository)
+    public Step csvFileToDB() {
+        return new StepBuilder("csvFileToDB", jobRepository)
                 .listener(persionStepListener())
                 .chunk(100, platformTransactionManager)
                 .reader(personModelFlatFileItemReader())
@@ -121,9 +128,9 @@ public class BatchConfig {
         FlatFileItemReader<PersonModel> reader = new FlatFileItemReader<>();
         reader.setLinesToSkip(1);
         reader.setLineMapper(lineMapper);
-        logger.info("inputFilePath "+  env.getProperty("test.inputFilePath"));
-        logger.info("Test_FILE_NAME "+  CommonEnum.Test_FILE_NAME.getKey());
-        logger.info("Test_FILE_NAME path "+  env.getProperty("test.inputFilePath") + CommonEnum.Test_FILE_NAME.getKey());
+        logger.info("inputFilePath " + env.getProperty("test.inputFilePath"));
+        logger.info("Test_FILE_NAME " + CommonEnum.Test_FILE_NAME.getKey());
+        logger.info("Test_FILE_NAME path " + env.getProperty("test.inputFilePath") + CommonEnum.Test_FILE_NAME.getKey());
         reader.setResource(new FileSystemResource(
                 env.getProperty("test.inputFilePath") + CommonEnum.Test_FILE_NAME.getKey()
         ));
@@ -151,7 +158,34 @@ public class BatchConfig {
     @StepScope
     public PersionStepListener persionStepListener() {
         PersionStepListener stepListener = new PersionStepListener();
+        stepListener.setFileName(CommonEnum.PERSON_TABLE_NAME.getKey());
         return stepListener;
+    }
+
+
+ /*   @Bean
+    @Qualifier("pers")
+    public Step csvFileToTxtFile() {
+        return new StepBuilder("csvFileToTxtFile", jobRepository)
+                .chunk(100, platformTransactionManager)
+                .reader(personModelFlatFileItemReader())
+                .writer(itemWriter())
+                .build();
+
+    }*/
+
+    @Bean
+    @Qualifier("pers")
+    @StepScope
+    public FlatFileItemWriter<PersonModel> itemWriter() {
+        FlatFileItemWriter<PersonModel> writer = new FlatFileItemWriter<>();
+        writer.setResource(new FileSystemResource(
+                env.getProperty("test.outputFilePath") + CommonEnum.Test_FILE_NAME.getKey()
+        ));
+        writer.setHeaderCallback(writer1 -> writer1.write("Id,firstName,lastName,age"));
+        writer.setLineAggregator(new PassThroughLineAggregator<>());
+
+        return writer;
     }
 
 }
